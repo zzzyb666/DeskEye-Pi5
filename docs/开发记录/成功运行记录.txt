@@ -1,0 +1,31 @@
+zyb@zyb:~/deskeye $ sudo systemctl start deskeye
+zyb@zyb:~/deskeye $ sudo systemctl status deskeye
+● deskeye.service - DeskEye Smart Desktop Focus Assistant
+     Loaded: loaded (/etc/systemd/system/deskeye.service; enabled; preset: enab>
+     Active: active (running) since Tue 2026-06-09 19:01:04 CST; 8s ago
+   Invocation: f3a260ff8ef34066a532daf912b7e8b4
+       Docs: file:///home/zyb/deskeye/PROJECT_LOG.md
+   Main PID: 4842 (python3)
+      Tasks: 17 (limit: 4757)
+        CPU: 18.671s
+     CGroup: /system.slice/deskeye.service
+             └─4842 /home/zyb/deskeye/.venv/bin/python3 /home/zyb/deskeye/main.>
+6月 09 19:01:07 zyb python3[4842]: [5:32:29.660458537] [4851]  INFO RPI pisp.cp>
+6月 09 19:01:07 zyb python3[4842]: [5:32:29.663508195] [4855]  INFO Camera came>
+6月 09 19:01:07 zyb python3[4842]: [5:32:29.663606177] [4851]  INFO RPI pisp.cp>
+6月 09 19:01:07 zyb python3[4842]: [ WARN:0@1.746] global cap_gstreamer.cpp:175>
+6月 09 19:01:07 zyb python3[4842]: [ WARN:0@1.746] global cap_gstreamer.cpp:177>
+6月 09 19:01:07 zyb python3[4842]: DeskEye 检测线程已启动（计分 1.0s，YOLO 每 3>
+6月 09 19:01:08 zyb python3[4842]: score=   0 rate=+0/s state=ABSENT no_face
+6月 09 19:01:09 zyb python3[4842]: score=   0 rate=+0/s state=ABSENT no_face
+...skipping...
+● deskeye.service - DeskEye Smart Desktop Focus Assistant
+     Loaded: loaded (/etc/systemd/system/deskeye.service; enabled; preset: enab>
+     Active: active (running) since Tue 2026-06-09 19:01:04 CST; 8s ago
+   Invocation: f3a260ff8ef34066a532daf912b7e8b4
+       Docs: file:///home/zyb/deskeye/PROJECT_LOG.md
+   Main PID: 4842 (python3)
+      Tasks: 17 (limit: 4757)
+        CPU: 18.671s
+     CGroup: /system.slice/deskeye.service
+             └─4842 /home/zyb/deskeye/.venv/bin/python3 /home/zyb/deskeye/main.>

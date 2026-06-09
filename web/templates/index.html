@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeskEye 专注仪表盘</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4f;
+      --text: #e8eef7;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --green: #3dd68c;
+      --orange: #f5a623;
+      --red: #ff6b6b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.25rem;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 600; }
+    .meta { color: var(--muted); font-size: 0.875rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+    .card .label { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.35rem; }
+    .card .value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+    .card.focus .value { color: var(--green); }
+    .card.distract .value { color: var(--orange); }
+    .card.phone .value { color: var(--red); }
+    .card.score .value { color: var(--accent); }
+    .chart-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+    .chart-wrap h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 220px;
+      border-radius: 6px;
+      background: #121820;
+    }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 3rem 1rem;
+      font-size: 0.9rem;
+    }
+    .status { margin-top: 0.75rem; color: var(--muted); font-size: 0.8rem; }
+    .err { color: var(--red); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DeskEye 专注仪表盘</h1>
+    <div class="meta">
+      <span id="dateLabel">—</span>
+      · 每 <span id="refreshLabel">{{ refresh_sec }}</span>s 刷新
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="card focus">
+      <div class="label">今日专注时长</div>
+      <div class="value" id="focusTime">—</div>
+    </div>
+    <div class="card distract">
+      <div class="label">分心次数</div>
+      <div class="value" id="distractCount">—</div>
+    </div>
+    <div class="card phone">
+      <div class="label">手机检测</div>
+      <div class="value" id="phoneCount">—</div>
+    </div>
+    <div class="card score">
+      <div class="label">均分</div>
+      <div class="value" id="avgScore">—</div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <h2>分数趋势</h2>
+    <canvas id="chart" width="800" height="220"></canvas>
+    <div class="empty" id="emptyChart" hidden>今日尚无 score_tick 记录。请先运行 test_focus.py 写入数据。</div>
+    <div class="status" id="status">加载中…</div>
+  </div>
+
+  <script>
+    const REFRESH_MS = {{ refresh_sec }} * 1000;
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+    let timer = null;
+    let lastSeries = [];
+
+    function formatFocus(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return m + "分" + String(s).padStart(2, "0") + "秒";
+    }
+
+    function setStatus(msg, isErr) {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.className = isErr ? "status err" : "status";
+    }
+
+    function drawChart(series) {
+      const empty = document.getElementById("emptyChart");
+      if (!series || series.length === 0) {
+        canvas.hidden = true;
+        empty.hidden = false;
+        return;
+      }
+      canvas.hidden = false;
+      empty.hidden = true;
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const W = rect.width;
+      const H = rect.height;
+      const pad = { top: 16, right: 16, bottom: 28, left: 40 };
+      const plotW = W - pad.left - pad.right;
+      const plotH = H - pad.top - pad.bottom;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const scores = series.map(p => p.score);
+      let minS = Math.min(0, ...scores);
+      let maxS = Math.max(1, ...scores);
+      if (maxS === minS) maxS = minS + 1;
+
+      function xAt(i) {
+        if (series.length === 1) return pad.left + plotW / 2;
+        return pad.left + (i / (series.length - 1)) * plotW;
+      }
+      function yAt(v) {
+        return pad.top + plotH - ((v - minS) / (maxS - minS)) * plotH;
+      }
+
+      ctx.strokeStyle = "#2d3a4f";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(pad.left + plotW, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#8b9cb3";
+      ctx.font = "11px system-ui, sans-serif";
+      ctx.textAlign = "right";
+      for (let i = 0; i <= 4; i++) {
+        const v = minS + ((maxS - minS) * (4 - i)) / 4;
+        const y = pad.top + (plotH * i) / 4;
+        ctx.fillText(Math.round(v), pad.left - 6, y + 4);
+      }
+
+      ctx.strokeStyle = "#3d8bfd";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      series.forEach((p, i) => {
+        const x = xAt(i);
+        const y = yAt(p.score);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = "#3d8bfd";
+      series.forEach((p, i) => {
+        ctx.beginPath();
+        ctx.arc(xAt(i), yAt(p.score), 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.fillStyle = "#8b9cb3";
+      ctx.textAlign = "center";
+      const labelIdx = [0, Math.floor((series.length - 1) / 2), series.length - 1];
+      const seen = new Set();
+      labelIdx.forEach(i => {
+        if (i < 0 || i >= series.length || seen.has(i)) return;
+        seen.add(i);
+        ctx.fillText(series[i].time, xAt(i), H - 8);
+      });
+    }
+
+    function applyData(data) {
+      document.getElementById("dateLabel").textContent = data.date || "—";
+      document.getElementById("focusTime").textContent =
+        formatFocus(data.total_focus_seconds || 0);
+      document.getElementById("distractCount").textContent =
+        String(data.distraction_count ?? 0);
+      document.getElementById("phoneCount").textContent =
+        String(data.phone_detect_count ?? 0);
+      document.getElementById("avgScore").textContent =
+        String(data.avg_score ?? 0);
+      if (data.refresh_sec) {
+        document.getElementById("refreshLabel").textContent = data.refresh_sec;
+      }
+      lastSeries = data.score_series || [];
+      drawChart(lastSeries);
+      const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+      setStatus("已更新 " + now, false);
+    }
+
+    async function loadToday() {
+      try {
+        const res = await fetch("/api/today", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        applyData(data);
+      } catch (e) {
+        setStatus("加载失败: " + e.message, true);
+      }
+    }
+
+    function schedule() {
+      if (timer) clearInterval(timer);
+      timer = setInterval(loadToday, REFRESH_MS);
+    }
+
+    window.addEventListener("resize", () => {
+      if (lastSeries.length) drawChart(lastSeries);
+    });
+
+    loadToday();
+    schedule();
+  </script>
+</body>
+</html>

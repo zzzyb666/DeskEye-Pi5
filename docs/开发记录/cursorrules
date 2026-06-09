@@ -1,0 +1,61 @@
+# DeskEye 智能桌面专注助手 —— Cursor 开发规范
+
+## 目标系统
+基于 Raspberry Pi 5 (aarch64, 4×Cortex-A76) + CSI 摄像头(libcamera)的离线智能桌面专注监控系统。检测座位状态、人脸朝向、手机干扰，记录专注数据，提供Flask Web仪表盘。
+
+## 技术栈（不可更改）
+- Python 3.11+, OpenCV (GStreamer pipeline: libcamerasrc), ONNX Runtime ARM NN, SQLite, Flask
+- 模型：ONNX INT8量化，禁止PyTorch直接推理，禁止FP32
+- 摄像头pipeline：`libcamerasrc ! video/x-raw,width=640,height=480,framerate=15/1,format=NV12 ! queue ! videoconvert ! videoscale ! video/x-raw,width=640,height=480,format=BGR ! appsink drop=true`
+
+## 开发阶段（按顺序，每步可验证）
+0. 项目脚手架+摄像头捕获验证
+1. 运动检测+人物存在检测 (MOG2背景减除)
+2. 人脸检测+朝向估计 (OpenCV DNN/YuNet ONNX)
+3. 手机/干扰物检测 (YOLOv5n-INT8 ONNX)
+4. 专注度评分+SQLite持久化
+5. Flask Web仪表盘
+6. 系统集成+systemd部署
+
+## 每次编码前的强制步骤
+1. 阅读当前目录文件 (src/, web/, tests/, PROJECT_LOG.md)
+2. 判断当前开发进度和阶段
+3. 说明下一步计划（改什么文件、为什么）
+4. **等待用户确认后再生成代码**
+
+## 文件操作规范
+- 优先修改已有文件，禁止随意删除重建
+- 每完成一阶段立即更新 PROJECT_LOG.md
+- 所有改动需在回复中说明：改了什么→为什么改→如何验证
+
+## 问题收敛流程（阻塞时必须先执行）
+1. 当前卡在哪里（一句话）
+2. 根因是什么
+3. 最优先该做什么
+4. 有哪些可选方案（2-3个及取舍）
+
+## 真实工程问题（预期必现）
+- GStreamer pipeline格式错误导致摄像头打不开 → 严格使用指定pipeline模板
+- 推理慢 → 检查INT8量化+ARM NN backend
+- 低光检测失效 → 调整libcamera曝光增益
+- MOG2误报 → 调varThreshold+形态学开运算
+- 内存泄漏 → 每1000帧gc.collect(), SQLite连接及时关闭
+- 人脸侧脸丢失 → 置信度阈值降至0.3，运动检测兜底
+- 高温降频 → 加散热，performance governor
+
+## 阶段完成后必须发送
+```
+刚刚改了什么：[具体文件和改动]
+现在做到哪里了：[整体进度]
+下一步应该是什么：[下阶段任务和验证方法]
+是否继续？请确认。
+```
+
+## 数据库表结构
+```sql
+focus_events(id,timestamp,event_type,confidence,score_delta,notes)
+daily_stats(date,total_focus_seconds,distraction_count,avg_score,phone_detect_count)
+```
+
+## 核心原则
+先问后做 | 小步快跑 | 文档先行 | 问题收敛 | Pi5专用 | 离线优先
